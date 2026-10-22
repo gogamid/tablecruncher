@@ -123,16 +123,14 @@ endif()
 
 # Link libraries
 if(APPLE)
-    if(ARCH STREQUAL "arm")
-        target_link_libraries(${PROJECT_NAME} PRIVATE
-            "-framework Cocoa"
-            "-weak_framework UniformTypeIdentifiers"
-        )
-    else()
-        target_link_libraries(${PROJECT_NAME} PRIVATE
-            "-framework Cocoa"
-        )
-    endif()
+    # UniformTypeIdentifiers is needed on all architectures: FLTK's macOS file
+    # chooser (Fl_Native_File_Chooser_MAC.o) references the UTType class.
+    # It is linked weakly because the framework only exists on macOS 11+,
+    # while the application may still be built for an older minimum version.
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework Cocoa"
+        "-weak_framework UniformTypeIdentifiers"
+    )
     target_link_libraries(${PROJECT_NAME} PRIVATE
         ${FLTKLIBDIR}/lib/libfltk.a
         ${FLTKLIBDIR}/lib/libfltk_images.a

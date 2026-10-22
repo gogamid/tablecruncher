@@ -41,11 +41,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache FLTK
         id: fltk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: fltk
           key: fltk-1.4.5-macos-${{ matrix.arch }}
@@ -95,7 +95,7 @@ jobs:
           echo "PACKAGE=Tablecruncher-${VERSION}-${{ matrix.arch }}.zip" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Tablecruncher-macos-${{ matrix.arch }}
           path: build/dist/Tablecruncher-*.zip

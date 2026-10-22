@@ -1,0 +1,9 @@
+# Configuration for actionlint (https://github.com/rhysd/actionlint)
+#
+# actionlint's built-in runner-label list is outdated and does not know the
+# newer macOS labels. These are valid labels, see:
+# https://github.com/actions/runner-images#available-images
+self-hosted-runner:
+  labels:
+    - macos-15-intel
+    - macos-26-intel

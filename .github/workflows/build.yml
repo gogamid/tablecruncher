@@ -1,0 +1,102 @@
+name: Build (macOS)
+
+# Builds Tablecruncher for macOS and attaches the .app bundle as a downloadable
+# artifact.
+#
+# FLTK is NOT vendored in this repository and is not available on the runners,
+# so every job builds FLTK 1.4.5 from source first. The result is cached to
+# keep subsequent runs fast.
+#
+# Notes:
+# - FLTK is built with --enable-localzlib because the project's link line
+#   references libfltk_z.a, which is only produced with a bundled zlib.
+#   (Homebrew's FLTK bottle does not ship it and cannot be used here.)
+# - The deployment target is 11.0 for arm64: macOS 11 (Big Sur) is the first
+#   release on Apple Silicon, so 11.0 is the hard floor there.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            min_version: "11.0"
+          - runner: macos-15-intel
+            arch: x86_64
+            min_version: "11.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache FLTK
+        id: fltk-cache
+        uses: actions/cache@v4
+        with:
+          path: fltk
+          key: fltk-1.4.5-macos-${{ matrix.arch }}
+
+      - name: Build FLTK
+        if: steps.fltk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p fltk && cd fltk
+          curl -fsSL -o fltk.tar.bz2 \
+            https://github.com/fltk/fltk/releases/download/release-1.4.5/fltk-1.4.5-source.tar.bz2
+          echo "b5a52489b7ffae196db2076adb4c1b18170db0d047f5e93539a382603461564b  fltk.tar.bz2" | shasum -a 256 -c -
+          tar -xjf fltk.tar.bz2 --strip-components=1
+          # --enable-localzlib is required: it produces libfltk_z.a.
+          # The deployment target must match the one used for Tablecruncher.
+          ./configure \
+            CFLAGS="-mmacosx-version-min=${{ matrix.min_version }}" \
+            CXXFLAGS="-mmacosx-version-min=${{ matrix.min_version }}" \
+            LDFLAGS="-mmacosx-version-min=${{ matrix.min_version }}" \
+            --enable-localzlib
+          make -j"$(sysctl -n hw.ncpu)"
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          cmake -S . -B build \
+            -DFLTKDIR="$PWD/fltk" \
+            -DMACOS_VERSION=${{ matrix.min_version }}
+
+      - name: Build
+        run: cmake --build build -- -j"$(sysctl -n hw.ncpu)"
+
+      # The .app bundle is created by the POST_BUILD hook in CMakeLists.txt.
+      - name: Sign (ad-hoc) and package
+        run: |
+          set -euo pipefail
+          cd build/dist
+          # Ad-hoc signature so the bundle is not reported as damaged.
+          # (A Developer ID signature + notarization requires credentials
+          # that are not available to CI; see scripts/sign-and-notarize.sh.)
+          codesign --deep --force --sign - Tablecruncher.app || true
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            Tablecruncher.app/Contents/Info.plist)
+          # ditto preserves symlinks and permissions inside the bundle.
+          /usr/bin/ditto -c -k --keepParent \
+            Tablecruncher.app "Tablecruncher-${VERSION}-${{ matrix.arch }}.zip"
+          echo "PACKAGE=Tablecruncher-${VERSION}-${{ matrix.arch }}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tablecruncher-macos-${{ matrix.arch }}
+          path: build/dist/Tablecruncher-*.zip
+          if-no-files-found: error
